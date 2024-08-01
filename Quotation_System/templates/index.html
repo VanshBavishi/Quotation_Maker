@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quotation System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css">
+    <style>
+        .product-entry {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .product-entry > * {
+            flex: 1;
+        }
+        .btn-delete {
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+  
+<div class="container mt-5">
+    <h1>Quotation System</h1>
+   
+    <form id="quotation-form">
+        <div class="mb-3">
+            <label for="client-name" class="form-label">Client Name</label>
+            <input type="text" class="form-control" id="client-name" placeholder="Enter client's name" required>
+            <label for="client-add" class="form-label">Client Adderess</label>
+            <input type="text" class="form-control" id="client-add" placeholder="Enter client's Address" required>
+        </div>
+        <div id="products-list">
+            <div class="product-entry mb-3">
+                <input list="product-names" class="form-control product-name" placeholder="Product Name" required>
+                <datalist id="product-names"></datalist>
+                <input list="product-brands" class="form-control product-brand" placeholder="Brand" required>
+                <datalist id="product-brands"></datalist>
+                <input type="number" class="form-control price" placeholder="Price" step="0.01" required>
+                <input type="number" class="form-control quantity" placeholder="Quantity" required>
+                <button type="button" class="btn btn-danger btn-delete">Delete</button>
+            </div>
+        </div>
+        <button type="button" class="btn btn-secondary" id="add-product">Add Another Product</button>
+        <button type="submit" class="btn btn-primary">Generate Quotation</button>
+        <button type="button" class="btn btn-danger" id="reset-form">Reset</button>
+    </form>
+    
+</div>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    $(document).ready(function() {
+        fetchProducts();
+
+        $('#add-product').click(function() {
+            $('#products-list').append(`
+                <div class="product-entry mb-3">
+                    <input list="product-names" class="form-control product-name" placeholder="Product Name" required>
+                    <datalist id="product-names"></datalist>
+                    <input list="product-brands" class="form-control product-brand" placeholder="Brand" required>
+                    <datalist id="product-brands"></datalist>
+                    <input type="number" class="form-control price" placeholder="Price" step="0.01" required>
+                    <input type="number" class="form-control quantity" placeholder="Quantity" required>
+                    <button type="button" class="btn btn-danger btn-delete">Delete</button>
+                </div>
+            `);
+            fetchProducts();
+        });
+
+        function fetchProducts() {
+            $.get('/products', function(data) {
+                const productNames = new Set();
+                const productBrands = new Set();
+                data.forEach(product => {
+                    productNames.add(product.name);
+                    productBrands.add(product.brand);
+                });
+
+                const $productNamesList = $('#product-names');
+                $productNamesList.empty();
+                productNames.forEach(name => {
+                    $productNamesList.append(`<option value="${name}">`);
+                });
+
+                const $productBrandsList = $('#product-brands');
+                $productBrandsList.empty();
+                productBrands.forEach(brand => {
+                    $productBrandsList.append(`<option value="${brand}">`);
+                });
+            });
+        }
+
+        $('#products-list').on('click', '.btn-delete', function() {
+            $(this).closest('.product-entry').remove();
+        });
+
+        $('#quotation-form').submit(function(event) {
+            event.preventDefault();
+
+            const clientName = $('#client-name').val();
+            const clientAdd = $('#client-add').val();
+            const products = [];
+            $('.product-entry').each(function() {
+                const productName = $(this).find('.product-name').val();
+                const productBrand = $(this).find('.product-brand').val();
+                const price = $(this).find('.price').val();
+                const quantity = $(this).find('.quantity').val();
+
+                if (productName && productBrand && price && quantity) {
+                    products.push({ name: productName, brand: productBrand, price: price, quantity: quantity });
+                }
+            });
+
+            $.ajax({
+                url: '/generate-quotation',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ client_name: clientName,client_add: clientAdd, products: products }),
+                xhrFields: {
+                    responseType: 'blob'  // Important for binary file handling
+                },
+                success: function(response) {
+                    const url = window.URL.createObjectURL(new Blob([response], { type: 'application/pdf' }));
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'quotation.pdf';  // Set the name of the downloaded file
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                },
+                error: function(xhr) {
+                    console.log('Error:', xhr.responseText);  // Debugging
+                }
+            });
+
+            // Save new products to the database
+            $.ajax({
+                url: '/add-products',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ products: products }),
+                success: function(response) {
+                    console.log('Products saved to database');
+                },
+                error: function(xhr) {
+                    console.log('Error:', xhr.responseText);  // Debugging
+                }
+            });
+        });
+
+        // Reset button functionality
+        $('#reset-form').click(function() {
+            $('#quotation-form')[0].reset();
+            $('#products-list').html(`
+                <div class="product-entry mb-3">
+                    <input list="product-names" class="form-control product-name" placeholder="Product Name" required>
+                    <datalist id="product-names"></datalist>
+                    <input list="product-brands" class="form-control product-brand" placeholder="Brand" required>
+                    <datalist id="product-brands"></datalist>
+                    <input type="number" class="form-control price" placeholder="Price" step="0.01" required>
+                    <input type="number" class="form-control quantity" placeholder="Quantity" required>
+                    <button type="button" class="btn btn-danger btn-delete">Delete</button>
+                </div>
+            `);
+            fetchProducts();
+        });
+    });
+</script>
+</body>
+</html>
